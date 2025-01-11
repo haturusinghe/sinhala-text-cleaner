@@ -11,6 +11,20 @@ def setup_directories() -> tuple[Path, Path]:
     output_dir.mkdir(exist_ok=True)
     return input_dir, output_dir
 
+def split_into_pages(text: str) -> list[tuple[str, str]]:
+    """Split text into pages and return list of (page_number, content) tuples."""
+    pages = []
+    page_matches = list(re.finditer(r'---\s*Page\s*(\d+)\s*---', text))
+    
+    for i, match in enumerate(page_matches):
+        page_num = match.group(1)
+        start = match.end()
+        end = page_matches[i + 1].start() if i + 1 < len(page_matches) else len(text)
+        page_content = text[start:end].strip()
+        pages.append((page_num, page_content))
+    
+    return pages
+
 def remove_headers_footers(text: str) -> str:
     """Remove common header and footer patterns from the text."""
     header_patterns = [
@@ -64,16 +78,25 @@ def process_files(input_dir: Path, output_dir: Path) -> None:
             with open(file_path, 'r', encoding='utf-8') as f:
                 text = f.read()
             
-            cleaned_text = clean_text(text)
-            issues = verify_cleaning(cleaned_text)
+            # Create document-specific output directory
+            doc_output_dir = output_dir / file_path.stem / "pages"
+            doc_output_dir.mkdir(parents=True, exist_ok=True)
             
-            output_path = output_dir / file_path.name
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(cleaned_text)
-            
-            print(f"Successfully processed: {file_path.name}")
-            if any(v > 0 for v in issues.values()):
-                print(f"Potential issues found: {issues}")
+            # Split and process each page
+            pages = split_into_pages(text)
+            for page_num, page_content in pages:
+                cleaned_page = clean_text(page_content)
+                issues = verify_cleaning(cleaned_page)
                 
+                # Save individual page
+                page_path = doc_output_dir / f"page{page_num}.txt"
+                with open(page_path, 'w', encoding='utf-8') as f:
+                    f.write(cleaned_page)
+                
+                if any(v > 0 for v in issues.values()):
+                    print(f"Issues in {file_path.name} page {page_num}: {issues}")
+                    
+            print(f"Successfully processed: {file_path.name}")
+            
         except Exception as e:
             print(f"Error processing {file_path.name}: {str(e)}")
